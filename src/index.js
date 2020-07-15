@@ -95,7 +95,7 @@ const run = async () => {
   await run();
   const interval = (process.env.INTERVAL === undefined || process.env.INTERVAL === '') ? 0 : parseFloat(process.env.INTERVAL);
   if (interval > 0) {
-    setTimeout(async () => {
+    setInterval(async () => {
       await run();
     }, interval * 60 * 1000);
   }
