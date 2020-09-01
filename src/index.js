@@ -38,7 +38,7 @@ const run = async () => {
   console.log('-'.repeat(time.length));
 
   if (!fs.existsSync('ip.json')) {
-    fs.writeFileSync('ip.json', JSON.stringify({ ip: currentIp }));
+    fs.writeFileSync('ip.json', JSON.stringify({ ip: null }));
   }
 
   const previousIp = JSON.parse(fs.readFileSync('ip.json')).ip;
@@ -51,11 +51,13 @@ const run = async () => {
   console.log(`previous: ${previousIp}\ncurrent: ${currentIp}`);
 
   try {
+    let recordsUpdated = 0;
     const allRecordSets = await route53.listResourceRecordSets({ HostedZoneId: process.env.AWS_HOSTED_ZONE_ID }).promise();
     for (let i = 0; i < allRecordSets.ResourceRecordSets.length; i += 1) {
       const recordSet = allRecordSets.ResourceRecordSets[i];
-      if (AWS_DOMAINS.includes(recordSet.Name)) {
-        await route53.changeResourceRecordSets({
+      const domain = recordSet.Name.replace(/\.$/, '');
+      if (AWS_DOMAINS.includes(domain) && recordSet.Type === 'A') {
+        const update = await route53.changeResourceRecordSets({
           ChangeBatch: {
             Changes: [
               {
@@ -71,9 +73,10 @@ const run = async () => {
           },
           HostedZoneId: process.env.AWS_HOSTED_ZONE_ID,
         }).promise();
+        recordsUpdated++;
       }
     }
-    console.log('updated route 53');
+    console.log(`${recordsUpdated} record(s) updated in route 53`);
     fs.writeFileSync('ip.json', JSON.stringify({ ip: currentIp }));
     if (process.env.POST_URL !== undefined && process.env.POST_URL !== '') {
       await axios({
