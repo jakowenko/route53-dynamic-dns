@@ -13,7 +13,7 @@
     "aws-sdk": "^2.975.0",
     "axios": "^0.21.1",
     "dotenv": "^10.0.0",
-    "moment-timezone": "^0.5.33",
+    "moment-timezone": "^0.5.35",
     "public-ip": "^4.0.4"
   },
   "devDependencies": {
