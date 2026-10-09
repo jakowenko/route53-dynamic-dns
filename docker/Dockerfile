@@ -1,11 +1,13 @@
-FROM node:12
+FROM node:22-alpine
 
-WORKDIR /
+WORKDIR /app
 
-COPY ./src/index.js ./src/package.json ./
+COPY ./src/package.json ./src/package-lock.json ./
 
-RUN npm install
+RUN npm ci --omit=dev
 
-COPY . .
+COPY ./src/index.js ./
+
+USER node
 
 CMD [ "node", "index.js" ]

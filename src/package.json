@@ -1,24 +1,16 @@
 {
   "name": "route53-dynamic-dns",
-  "version": "1.0.0",
-  "description": "",
+  "version": "2.0.0",
+  "description": "Keep Route 53 A records pointed at your public IP",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js"
   },
-  "keywords": [],
-  "author": "",
+  "engines": {
+    "node": ">=22"
+  },
   "license": "ISC",
   "dependencies": {
-    "aws-sdk": "^2.975.0",
-    "axios": "^0.21.1",
-    "dotenv": "^10.0.0",
-    "moment-timezone": "^0.5.33",
-    "public-ip": "^4.0.4"
-  },
-  "devDependencies": {
-    "eslint": "^6.8.0",
-    "eslint-config-airbnb-base": "^14.2.1",
-    "eslint-plugin-import": "^2.24.2"
+    "@aws-sdk/client-route-53": "^3.1148.0"
   }
 }
