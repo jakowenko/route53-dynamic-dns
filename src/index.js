@@ -1,4 +1,3 @@
-const fs = require('fs');
 const axios = require('axios');
 const publicIp = require('public-ip');
 const moment = require('moment-timezone');
@@ -31,53 +30,62 @@ const run = async () => {
   const tz = (process.env.TZ === undefined || process.env.TZ === '') ? 'America/Detroit' : process.env.TZ;
 
   const time = moment().tz(tz).format('MM/DD/YYYY hh:mm:ssa');
-  const currentIp = await publicIp.v4();
 
   console.log('-'.repeat(time.length));
   console.log(time);
   console.log('-'.repeat(time.length));
 
-  if (!fs.existsSync('ip.json')) {
-    fs.writeFileSync('ip.json', JSON.stringify({ ip: null }));
-  }
-
-  const previousIp = JSON.parse(fs.readFileSync('ip.json')).ip;
-
-  if (currentIp === previousIp) {
-    console.log('no change');
-    return;
-  }
-
-  console.log(`previous: ${previousIp}\ncurrent: ${currentIp}`);
-
   try {
-    let recordsUpdated = 0;
-    const allRecordSets = await route53.listResourceRecordSets({ HostedZoneId: process.env.AWS_HOSTED_ZONE_ID }).promise();
-    for (let i = 0; i < allRecordSets.ResourceRecordSets.length; i += 1) {
-      const recordSet = allRecordSets.ResourceRecordSets[i];
-      const domain = recordSet.Name.replace(/\.$/, '');
-      if (AWS_DOMAINS.includes(domain) && recordSet.Type === 'A') {
-        const update = await route53.changeResourceRecordSets({
-          ChangeBatch: {
-            Changes: [
-              {
-                Action: 'UPSERT',
-                ResourceRecordSet: {
-                  Name: recordSet.Name,
-                  Type: 'A',
-                  ResourceRecords: [{ Value: currentIp }],
-                  TTL: 300,
-                },
-              },
-            ],
-          },
-          HostedZoneId: process.env.AWS_HOSTED_ZONE_ID,
-        }).promise();
-        recordsUpdated++;
-      }
+    const currentIp = await publicIp.v4();
+
+    // Route 53 is the source of truth for the previous IP, so restarts and
+    // other instances updating the same records don't trigger false changes.
+    const recordSets = [];
+    let params = { HostedZoneId: process.env.AWS_HOSTED_ZONE_ID };
+    for (;;) {
+      const page = await route53.listResourceRecordSets(params).promise();
+      recordSets.push(...page.ResourceRecordSets);
+      if (!page.IsTruncated) break;
+      params = {
+        ...params,
+        StartRecordName: page.NextRecordName,
+        StartRecordType: page.NextRecordType,
+        StartRecordIdentifier: page.NextRecordIdentifier,
+      };
     }
-    console.log(`${recordsUpdated} record(s) updated in route 53`);
-    fs.writeFileSync('ip.json', JSON.stringify({ ip: currentIp }));
+
+    const aRecords = recordSets.filter((recordSet) => recordSet.Type === 'A' && AWS_DOMAINS.includes(recordSet.Name.replace(/\.$/, '')));
+    const missing = AWS_DOMAINS.filter((domain) => !aRecords.some((recordSet) => recordSet.Name.replace(/\.$/, '') === domain));
+    if (missing.length) {
+      console.log(`no A record found for: ${missing.join(', ')}`);
+    }
+
+    const outdated = aRecords.filter((recordSet) => (recordSet.ResourceRecords || []).map((record) => record.Value).join(',') !== currentIp);
+    if (!outdated.length) {
+      console.log('no change');
+      return;
+    }
+
+    const previousIps = [...new Set(outdated.map((recordSet) => (recordSet.ResourceRecords || []).map((record) => record.Value).join(',') || 'none'))];
+    const previousIp = previousIps.join(', ');
+    console.log(`previous: ${previousIp}\ncurrent: ${currentIp}`);
+
+    await route53.changeResourceRecordSets({
+      ChangeBatch: {
+        Changes: outdated.map((recordSet) => ({
+          Action: 'UPSERT',
+          ResourceRecordSet: {
+            Name: recordSet.Name,
+            Type: 'A',
+            ResourceRecords: [{ Value: currentIp }],
+            TTL: 300,
+          },
+        })),
+      },
+      HostedZoneId: process.env.AWS_HOSTED_ZONE_ID,
+    }).promise();
+    console.log(`${outdated.length} record(s) updated in route 53`);
+
     if (process.env.POST_URL !== undefined && process.env.POST_URL !== '') {
       await axios({
         method: 'post',
